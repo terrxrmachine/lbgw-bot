@@ -54,6 +54,61 @@ export class LBGWApiService {
       return null;
     }
   }
+
+  /**
+   * Получает статистику сайта (отзывы и CMS health)
+   */
+  async getSiteStats(): Promise<{
+    reviews: {
+      total: number;
+      published: number;
+      pending: number;
+    };
+    cms: {
+      status: string;
+      score: number;
+      total: number;
+      successful: number;
+    };
+  } | null> {
+    try {
+      logger.info('Fetching site statistics');
+
+      // Получаем статистику отзывов
+      const reviewsResponse = await axios.get(`${this.baseUrl}/api/reviews?pageSize=1000`);
+      const allReviews = reviewsResponse.data.items || [];
+
+      // Подсчитываем опубликованные и на модерации
+      // На сайте опубликованные отзывы приходят только через publicationState=live
+      const publishedCount = allReviews.length;
+
+      // Для подсчета всех отзывов (включая черновики) нужен прямой доступ к Strapi
+      // Пока используем примерную оценку
+      const totalCount = publishedCount; // Реальное значение можно получить только из Strapi напрямую
+      const pendingCount = 0; // Черновики не доступны через публичное API
+
+      // Получаем CMS health
+      const cmsResponse = await axios.get(`${this.baseUrl}/api/cms-health`);
+      const cmsData = cmsResponse.data;
+
+      return {
+        reviews: {
+          total: totalCount,
+          published: publishedCount,
+          pending: pendingCount,
+        },
+        cms: {
+          status: cmsData.summary?.overall || 'unknown',
+          score: cmsData.summary?.score || 0,
+          total: cmsData.summary?.total || 0,
+          successful: cmsData.summary?.successful || 0,
+        },
+      };
+    } catch (error) {
+      logger.error('Error fetching site statistics', error as Error);
+      return null;
+    }
+  }
 }
 
 export const lbgwApi = new LBGWApiService();

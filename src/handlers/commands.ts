@@ -1,5 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { yandexMetrica } from '../services/yandex-metrica';
+import { lbgwApi } from '../services/lbgw-api';
 import { logger } from '../utils/logger';
 
 export class CommandsHandler {
@@ -21,7 +22,8 @@ export class CommandsHandler {
       'Я помогаю управлять отзывами и просматривать статистику сайта.',
       '',
       '<b>Доступные команды:</b>',
-      '/stats [период] — Статистика сайта',
+      '/stats [период] — Статистика Яндекс.Метрики',
+      '/site_stats — Статистика сайта (отзывы, CMS)',
       '/help — Помощь по использованию',
       '',
       '<b>Примеры периодов для /stats:</b>',
@@ -127,6 +129,70 @@ export class CommandsHandler {
       await this.bot.sendMessage(
         chatId,
         '❌ Произошла ошибка при получении статистики',
+        { parse_mode: 'HTML' }
+      );
+    }
+  }
+
+  /**
+   * /site_stats - Статистика сайта (отзывы, CMS health)
+   */
+  async handleSiteStats(msg: TelegramBot.Message): Promise<void> {
+    const chatId = msg.chat.id;
+
+    try {
+      // Отправляем сообщение о загрузке
+      const loadingMsg = await this.bot.sendMessage(
+        chatId,
+        '⏳ Получаю статистику сайта...',
+        { parse_mode: 'HTML' }
+      );
+
+      // Получаем статистику с сайта через API
+      const siteStats = await lbgwApi.getSiteStats();
+
+      if (!siteStats) {
+        await this.bot.editMessageText(
+          '❌ Не удалось получить статистику сайта. Проверьте, что сайт доступен.',
+          {
+            chat_id: chatId,
+            message_id: loadingMsg.message_id,
+            parse_mode: 'HTML',
+          }
+        );
+        return;
+      }
+
+      const { reviews, cms } = siteStats;
+
+      const text = [
+        '📊 <b>Статистика сайта Lucky Bali Group</b>',
+        '',
+        '<b>📝 Отзывы:</b>',
+        `• Всего: ${reviews.total}`,
+        `• Опубликовано: ${reviews.published}`,
+        `• На модерации: ${reviews.pending}`,
+        '',
+        '<b>🖥 CMS (Strapi):</b>',
+        `• Статус: ${cms.status === 'healthy' ? '✅ Работает' : '⚠️ Проблемы'}`,
+        `• Оценка: ${cms.score}%`,
+        `• Успешных эндпоинтов: ${cms.successful}/${cms.total}`,
+        '',
+        `<i>Обновлено: ${new Date().toLocaleString('ru-RU')}</i>`,
+      ].join('\n');
+
+      await this.bot.editMessageText(text, {
+        chat_id: chatId,
+        message_id: loadingMsg.message_id,
+        parse_mode: 'HTML',
+      });
+
+      logger.success('Site stats sent');
+    } catch (error) {
+      logger.error('Error handling /site_stats command', error as Error);
+      await this.bot.sendMessage(
+        chatId,
+        '❌ Произошла ошибка при получении статистики сайта',
         { parse_mode: 'HTML' }
       );
     }

@@ -41,6 +41,10 @@ class LBGWBot {
       this.commandsHandler.handleStats(msg, args);
     });
 
+    this.bot.onText(/\/site_stats/, (msg) => {
+      this.commandsHandler.handleSiteStats(msg);
+    });
+
     // Callback queries (inline buttons)
     this.bot.on('callback_query', (query) => {
       this.reviewsHandler.handleCallback(query);
@@ -49,7 +53,7 @@ class LBGWBot {
     // Unknown commands
     this.bot.on('message', (msg) => {
       if (msg.text?.startsWith('/')) {
-        const knownCommands = ['/start', '/help', '/stats'];
+        const knownCommands = ['/start', '/help', '/stats', '/site_stats'];
         const command = msg.text.split(' ')[0];
         if (!knownCommands.includes(command)) {
           this.commandsHandler.handleUnknown(msg);

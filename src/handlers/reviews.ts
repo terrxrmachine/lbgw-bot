@@ -53,14 +53,15 @@ export class ReviewsHandler {
 
         // Отправляем подтверждение
         await this.bot.answerCallbackQuery(id, {
-          text: action === 'approve' 
-            ? '✅ Отзыв опубликован на сайте!' 
+          text: action === 'approve'
+            ? '✅ Отзыв опубликован на сайте!'
             : '❌ Отзыв отклонён и удалён',
         });
 
-        // Если одобрен - публикуем в канал отзывов
+        // Опционально: публикуем в канал отзывов (если настроен)
         if (action === 'approve' && config.telegram.reviewsChannel) {
           await this.publishToChannel(reviewId, this.extractReviewText(message.text || ''));
+          logger.info(`Review #${reviewId} published to channel`);
         }
       } else {
         await this.bot.answerCallbackQuery(id, {

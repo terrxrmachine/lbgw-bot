@@ -7,7 +7,7 @@ export const config = {
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN || '',
     chatId: process.env.TELEGRAM_CHAT_ID || '',
-    reviewsChannel: process.env.TELEGRAM_REVIEWS_CHANNEL || '',
+    reviewsChannel: process.env.TELEGRAM_REVIEWS_CHANNEL, // Optional
   },
   
   // LBGW Website API

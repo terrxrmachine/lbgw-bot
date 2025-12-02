@@ -3,6 +3,7 @@ import { config, validateConfig } from './config';
 import { logger } from './utils/logger';
 import { CommandsHandler } from './handlers/commands';
 import { ReviewsHandler } from './handlers/reviews';
+import { database } from './services/database';
 
 class LBGWBot {
   private bot: TelegramBot;
@@ -12,6 +13,9 @@ class LBGWBot {
   constructor() {
     // Validate environment variables
     validateConfig();
+
+    // Initialize database
+    database.init();
 
     // Initialize bot
     this.bot = new TelegramBot(config.telegram.botToken, { polling: true });
@@ -88,6 +92,7 @@ class LBGWBot {
   async stop(): Promise<void> {
     logger.info('Stopping bot...');
     await this.bot.stopPolling();
+    database.close();
     logger.success('Bot stopped');
   }
 }

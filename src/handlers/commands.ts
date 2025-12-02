@@ -1,6 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { yandexMetrica } from '../services/yandex-metrica';
 import { lbgwApi } from '../services/lbgw-api';
+import { database } from '../services/database';
 import { logger } from '../utils/logger';
 
 export class CommandsHandler {
@@ -280,25 +281,39 @@ export class CommandsHandler {
   }
 
   /**
-   * /test_review - Отправляет тестовое уведомление об отзыве
+   * /test_review - Создает тестовый отзыв в БД и отправляет уведомление
    */
   async handleTestReview(msg: TelegramBot.Message): Promise<void> {
     const chatId = msg.chat.id;
 
     try {
-      const reviewId = Date.now(); // Используем timestamp как ID
+      // Создаем реальный отзыв в БД
+      const review = database.createReview({
+        name: 'Test User',
+        text: 'This is a test review to check if the bot notifications are working correctly!',
+        locale: 'en',
+      });
+
+      if (!review) {
+        await this.bot.sendMessage(
+          chatId,
+          '❌ Не удалось создать тестовый отзыв в БД',
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
 
       const text = [
         `<b>📝 New Review (Pending)</b>`,
         `────────────────`,
-        `<b>Date:</b> ${new Date().toLocaleDateString('ru-RU')}`,
+        `<b>Date:</b> ${new Date(review.createdAt).toLocaleDateString('ru-RU')}`,
         `<b>Language:</b> 🇬🇧 EN`,
-        `<b>Name:</b> Test User`,
-        `<b>Text:</b>\nThis is a test review to check if the bot notifications are working correctly!`,
-        `<b>Avatar:</b> ❌ no`,
-        `<b>Photo:</b> ❌ no`,
+        `<b>Name:</b> ${review.name}`,
+        `<b>Text:</b>\n${review.text}`,
+        `<b>Avatar:</b> ${review.avatar ? '✅ yes' : '❌ no'}`,
+        `<b>Photo:</b> ${review.photo ? '✅ yes' : '❌ no'}`,
         `────────────────`,
-        `<b>Review ID:</b> ${reviewId}`,
+        `<b>Review ID:</b> ${review.id}`,
       ].join('\n');
 
       const reply_markup = {
@@ -306,11 +321,11 @@ export class CommandsHandler {
           [
             {
               text: '✅ Approve',
-              callback_data: `review_approve_${reviewId}`
+              callback_data: `review_approve_${review.id}`
             },
             {
               text: '❌ Reject',
-              callback_data: `review_reject_${reviewId}`
+              callback_data: `review_reject_${review.id}`
             }
           ]
         ]
@@ -321,12 +336,12 @@ export class CommandsHandler {
         reply_markup,
       });
 
-      logger.success(`Test review notification sent with ID ${reviewId}`);
+      logger.success(`Test review #${review.id} created and notification sent`);
     } catch (error) {
-      logger.error('Error sending test review', error as Error);
+      logger.error('Error creating test review', error as Error);
       await this.bot.sendMessage(
         chatId,
-        '❌ Ошибка при отправке тестового отзыва',
+        '❌ Ошибка при создании тестового отзыва',
         { parse_mode: 'HTML' }
       );
     }

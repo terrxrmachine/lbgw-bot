@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import { database } from './database';
 
 export class LBGWApiService {
   private baseUrl: string;
@@ -12,30 +13,22 @@ export class LBGWApiService {
   }
 
   /**
-   * Публикует или отклоняет отзыв
+   * Публикует или отклоняет отзыв (работа с локальной БД)
    */
   async publishReview(reviewId: number, action: 'approve' | 'reject'): Promise<boolean> {
     try {
       logger.info(`Publishing review #${reviewId} with action: ${action}`);
-      
-      const response = await axios.post(
-        `${this.baseUrl}/api/reviews/publish`,
-        { reviewId, action },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': this.apiKey,
-          },
-        }
-      );
 
-      if (response.data.success) {
-        logger.success(`Review #${reviewId} ${action === 'approve' ? 'published' : 'rejected'}`);
-        return true;
+      // Работаем с локальной БД
+      const success = action === 'approve'
+        ? database.approveReview(reviewId)
+        : database.rejectReview(reviewId);
+
+      if (success) {
+        logger.success(`Review #${reviewId} ${action === 'approve' ? 'approved' : 'rejected'} in database`);
       }
 
-      logger.error(`Failed to publish review #${reviewId}`, new Error(response.data.error));
-      return false;
+      return success;
     } catch (error) {
       logger.error(`Error publishing review #${reviewId}`, error as Error);
       return false;
@@ -56,7 +49,7 @@ export class LBGWApiService {
   }
 
   /**
-   * Получает статистику сайта (отзывы и CMS health)
+   * Получает статистику сайта (отзывы из БД)
    */
   async getSiteStats(): Promise<{
     reviews: {
@@ -74,35 +67,37 @@ export class LBGWApiService {
     try {
       logger.info('Fetching site statistics');
 
-      // Получаем статистику отзывов
-      const reviewsResponse = await axios.get(`${this.baseUrl}/api/reviews?pageSize=1000`);
-      const allReviews = reviewsResponse.data.items || [];
+      // Получаем статистику отзывов из локальной БД
+      const dbStats = database.getReviewsStats();
 
-      // Подсчитываем опубликованные и на модерации
-      // На сайте опубликованные отзывы приходят только через publicationState=live
-      const publishedCount = allReviews.length;
+      // Пытаемся получить CMS health (если сайт доступен)
+      let cmsStatus = {
+        status: 'unknown',
+        score: 0,
+        total: 0,
+        successful: 0,
+      };
 
-      // Для подсчета всех отзывов (включая черновики) нужен прямой доступ к Strapi
-      // Пока используем примерную оценку
-      const totalCount = publishedCount; // Реальное значение можно получить только из Strapi напрямую
-      const pendingCount = 0; // Черновики не доступны через публичное API
-
-      // Получаем CMS health
-      const cmsResponse = await axios.get(`${this.baseUrl}/api/cms-health`);
-      const cmsData = cmsResponse.data;
-
-      return {
-        reviews: {
-          total: totalCount,
-          published: publishedCount,
-          pending: pendingCount,
-        },
-        cms: {
+      try {
+        const cmsResponse = await axios.get(`${this.baseUrl}/api/cms-health`, { timeout: 3000 });
+        const cmsData = cmsResponse.data;
+        cmsStatus = {
           status: cmsData.summary?.overall || 'unknown',
           score: cmsData.summary?.score || 0,
           total: cmsData.summary?.total || 0,
           successful: cmsData.summary?.successful || 0,
+        };
+      } catch (error) {
+        logger.warn('Could not fetch CMS health, using default values');
+      }
+
+      return {
+        reviews: {
+          total: dbStats.total,
+          published: dbStats.approved,
+          pending: dbStats.pending,
         },
+        cms: cmsStatus,
       };
     } catch (error) {
       logger.error('Error fetching site statistics', error as Error);

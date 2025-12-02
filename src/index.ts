@@ -45,15 +45,28 @@ class LBGWBot {
       this.commandsHandler.handleSiteStats(msg);
     });
 
+    this.bot.onText(/\/test_review/, (msg) => {
+      this.commandsHandler.handleTestReview(msg);
+    });
+
     // Callback queries (inline buttons)
     this.bot.on('callback_query', (query) => {
-      this.reviewsHandler.handleCallback(query);
+      const data = query.data || '';
+
+      // Отзывы: review_approve_* или review_reject_*
+      if (data.startsWith('review_')) {
+        this.reviewsHandler.handleCallback(query);
+      }
+      // Меню: menu_*, stats_*, back_to_menu
+      else if (data.startsWith('menu_') || data.startsWith('stats_') || data === 'back_to_menu') {
+        this.commandsHandler.handleMenuCallback(query);
+      }
     });
 
     // Unknown commands
     this.bot.on('message', (msg) => {
       if (msg.text?.startsWith('/')) {
-        const knownCommands = ['/start', '/help', '/stats', '/site_stats'];
+        const knownCommands = ['/start', '/help', '/stats', '/site_stats', '/test_review'];
         const command = msg.text.split(' ')[0];
         if (!knownCommands.includes(command)) {
           this.commandsHandler.handleUnknown(msg);

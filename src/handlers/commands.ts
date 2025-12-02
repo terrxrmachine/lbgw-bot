@@ -21,22 +21,27 @@ export class CommandsHandler {
       '',
       'Я помогаю управлять отзывами и просматривать статистику сайта.',
       '',
-      '<b>Доступные команды:</b>',
-      '/stats [период] — Статистика Яндекс.Метрики',
-      '/site_stats — Статистика сайта (отзывы, CMS)',
-      '/help — Помощь по использованию',
-      '',
-      '<b>Примеры периодов для /stats:</b>',
-      '• today — сегодня',
-      '• yesterday — вчера',
-      '• 7d — последние 7 дней',
-      '• 30d — последние 30 дней',
-      '• 2025-01 — январь 2025',
-      '• 2025-01-15 — конкретный день',
-      '• 2025-01-01..2025-01-31 — диапазон дат',
+      'Выберите действие:',
     ].join('\n');
 
-    await this.bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: '📊 Статистика сайта', callback_data: 'menu_site_stats' },
+        ],
+        [
+          { text: '📈 Яндекс.Метрика', callback_data: 'menu_yandex_stats' },
+        ],
+        [
+          { text: '❓ Справка', callback_data: 'menu_help' },
+        ],
+      ],
+    };
+
+    await this.bot.sendMessage(chatId, text, {
+      parse_mode: 'HTML',
+      reply_markup: keyboard,
+    });
   }
 
   /**
@@ -193,6 +198,135 @@ export class CommandsHandler {
       await this.bot.sendMessage(
         chatId,
         '❌ Произошла ошибка при получении статистики сайта',
+        { parse_mode: 'HTML' }
+      );
+    }
+  }
+
+  /**
+   * Обработка callback от меню
+   */
+  async handleMenuCallback(query: TelegramBot.CallbackQuery): Promise<void> {
+    const { id, data, message } = query;
+
+    if (!data || !message) {
+      return;
+    }
+
+    const chatId = message.chat.id;
+
+    try {
+      // Обрабатываем нажатия на кнопки меню
+      if (data === 'menu_site_stats') {
+        await this.bot.answerCallbackQuery(id);
+        await this.handleSiteStats(message);
+      } else if (data === 'menu_yandex_stats') {
+        await this.bot.answerCallbackQuery(id);
+        await this.showYandexStatsMenu(message);
+      } else if (data === 'menu_help') {
+        await this.bot.answerCallbackQuery(id);
+        await this.handleHelp(message);
+      } else if (data.startsWith('stats_')) {
+        // Обработка выбора периода статистики
+        const period = data.replace('stats_', '');
+        await this.bot.answerCallbackQuery(id);
+        await this.handleStats(message, [period]);
+      } else if (data === 'back_to_menu') {
+        await this.bot.answerCallbackQuery(id);
+        await this.bot.deleteMessage(chatId, message.message_id);
+        await this.handleStart(message);
+      }
+    } catch (error) {
+      logger.error('Error handling menu callback', error as Error);
+      await this.bot.answerCallbackQuery(id, {
+        text: '❌ Произошла ошибка',
+        show_alert: true,
+      });
+    }
+  }
+
+  /**
+   * Показывает меню выбора периода для Яндекс.Метрики
+   */
+  async showYandexStatsMenu(msg: TelegramBot.Message): Promise<void> {
+    const chatId = msg.chat.id;
+
+    const text = [
+      '📈 <b>Статистика Яндекс.Метрики</b>',
+      '',
+      'Выберите период:',
+    ].join('\n');
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: '📅 Сегодня', callback_data: 'stats_today' },
+          { text: '📅 Вчера', callback_data: 'stats_yesterday' },
+        ],
+        [
+          { text: '📊 7 дней', callback_data: 'stats_7d' },
+          { text: '📊 30 дней', callback_data: 'stats_30d' },
+        ],
+        [
+          { text: '🔙 Назад', callback_data: 'back_to_menu' },
+        ],
+      ],
+    };
+
+    await this.bot.sendMessage(chatId, text, {
+      parse_mode: 'HTML',
+      reply_markup: keyboard,
+    });
+  }
+
+  /**
+   * /test_review - Отправляет тестовое уведомление об отзыве
+   */
+  async handleTestReview(msg: TelegramBot.Message): Promise<void> {
+    const chatId = msg.chat.id;
+
+    try {
+      const reviewId = Date.now(); // Используем timestamp как ID
+
+      const text = [
+        `<b>📝 New Review (Pending)</b>`,
+        `────────────────`,
+        `<b>Date:</b> ${new Date().toLocaleDateString('ru-RU')}`,
+        `<b>Language:</b> 🇬🇧 EN`,
+        `<b>Name:</b> Test User`,
+        `<b>Text:</b>\nThis is a test review to check if the bot notifications are working correctly!`,
+        `<b>Avatar:</b> ❌ no`,
+        `<b>Photo:</b> ❌ no`,
+        `────────────────`,
+        `<b>Review ID:</b> ${reviewId}`,
+      ].join('\n');
+
+      const reply_markup = {
+        inline_keyboard: [
+          [
+            {
+              text: '✅ Approve',
+              callback_data: `review_approve_${reviewId}`
+            },
+            {
+              text: '❌ Reject',
+              callback_data: `review_reject_${reviewId}`
+            }
+          ]
+        ]
+      };
+
+      await this.bot.sendMessage(chatId, text, {
+        parse_mode: 'HTML',
+        reply_markup,
+      });
+
+      logger.success(`Test review notification sent with ID ${reviewId}`);
+    } catch (error) {
+      logger.error('Error sending test review', error as Error);
+      await this.bot.sendMessage(
+        chatId,
+        '❌ Ошибка при отправке тестового отзыва',
         { parse_mode: 'HTML' }
       );
     }

@@ -4,11 +4,13 @@ import { logger } from './utils/logger';
 import { CommandsHandler } from './handlers/commands';
 import { ReviewsHandler } from './handlers/reviews';
 import { database } from './services/database';
+import { WebhookServer } from './services/webhook';
 
 class LBGWBot {
   private bot: TelegramBot;
   private commandsHandler: CommandsHandler;
   private reviewsHandler: ReviewsHandler;
+  private webhookServer: WebhookServer;
 
   constructor() {
     // Validate environment variables
@@ -23,6 +25,10 @@ class LBGWBot {
     // Initialize handlers
     this.commandsHandler = new CommandsHandler(this.bot);
     this.reviewsHandler = new ReviewsHandler(this.bot);
+
+    // Initialize webhook server
+    this.webhookServer = new WebhookServer(this.bot);
+    this.webhookServer.start(config.port);
 
     // Setup handlers
     this.setupHandlers();
@@ -91,6 +97,7 @@ class LBGWBot {
    */
   async stop(): Promise<void> {
     logger.info('Stopping bot...');
+    this.webhookServer.stop();
     await this.bot.stopPolling();
     database.close();
     logger.success('Bot stopped');

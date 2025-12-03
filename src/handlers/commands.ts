@@ -179,13 +179,12 @@ export class CommandsHandler {
         `• Опубликовано: ${reviews.published}`,
         `• На модерации: ${reviews.pending}`,
         '',
-        '<b>🖥 CMS (Strapi):</b>',
-        `• Статус: ${cms.status === 'healthy' ? '✅ Работает' : '⚠️ Проблемы'}`,
-        `• Оценка: ${cms.score}%`,
-        `• Успешных эндпоинтов: ${cms.successful}/${cms.total}`,
+        '<b>🖥 Сайт:</b>',
+        `• Статус: ${cms.status === 'healthy' ? '✅ Работает' : cms.status === 'unknown' ? '⚠️ Недоступен' : '⚠️ Проблемы'}`,
+        cms.score > 0 ? `• Оценка: ${cms.score}%` : '',
         '',
         `<i>Обновлено: ${new Date().toLocaleString('ru-RU')}</i>`,
-      ].join('\n');
+      ].filter(line => line !== '').join('\n');
 
       await this.bot.editMessageText(text, {
         chat_id: chatId,

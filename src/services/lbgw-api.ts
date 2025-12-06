@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { config } from '../config';
 import { logger } from '../utils/logger';
-import { database } from './database';
 
 export class LBGWApiService {
   private baseUrl: string;
@@ -13,22 +12,35 @@ export class LBGWApiService {
   }
 
   /**
-   * Публикует или отклоняет отзыв (работа с локальной БД)
+   * Публикует или отклоняет отзыв (через API сайта)
    */
   async publishReview(reviewId: number, action: 'approve' | 'reject'): Promise<boolean> {
     try {
       logger.info(`Publishing review #${reviewId} with action: ${action}`);
 
-      // Работаем с локальной БД
-      const success = action === 'approve'
-        ? database.approveReview(reviewId)
-        : database.rejectReview(reviewId);
+      // Отправляем запрос на API сайта для модерации
+      const response = await axios.post(
+        `${this.baseUrl}/api/reviews/moderate`,
+        {
+          reviewId,
+          action,
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': this.apiKey,
+          },
+          timeout: 5000,
+        }
+      );
 
-      if (success) {
-        logger.success(`Review #${reviewId} ${action === 'approve' ? 'approved' : 'rejected'} in database`);
+      if (response.data?.success) {
+        logger.success(`Review #${reviewId} ${action === 'approve' ? 'approved' : 'rejected'} on website`);
+        return true;
       }
 
-      return success;
+      logger.warn(`Failed to ${action} review #${reviewId}: ${response.data?.error || 'Unknown error'}`);
+      return false;
     } catch (error) {
       logger.error(`Error publishing review #${reviewId}`, error as Error);
       return false;
@@ -49,7 +61,7 @@ export class LBGWApiService {
   }
 
   /**
-   * Получает статистику сайта (отзывы из БД)
+   * Получает статистику сайта (отзывы из API сайта)
    */
   async getSiteStats(): Promise<{
     reviews: {
@@ -67,8 +79,31 @@ export class LBGWApiService {
     try {
       logger.info('Fetching site statistics');
 
-      // Получаем статистику отзывов из локальной БД
-      const dbStats = database.getReviewsStats();
+      // Получаем статистику отзывов через API сайта
+      let reviewsStats = {
+        total: 0,
+        published: 0,
+        pending: 0,
+      };
+
+      try {
+        const statsResponse = await axios.get(`${this.baseUrl}/api/reviews/stats`, {
+          headers: {
+            'X-API-Key': this.apiKey,
+          },
+          timeout: 3000,
+        });
+
+        if (statsResponse.data?.success) {
+          reviewsStats = {
+            total: statsResponse.data.total || 0,
+            published: statsResponse.data.approved || 0,
+            pending: statsResponse.data.pending || 0,
+          };
+        }
+      } catch (error) {
+        logger.warn('Could not fetch reviews stats from API');
+      }
 
       // Пытаемся получить CMS health (если сайт доступен)
       let cmsStatus = {
@@ -92,11 +127,7 @@ export class LBGWApiService {
       }
 
       return {
-        reviews: {
-          total: dbStats.total,
-          published: dbStats.approved,
-          pending: dbStats.pending,
-        },
+        reviews: reviewsStats,
         cms: cmsStatus,
       };
     } catch (error) {

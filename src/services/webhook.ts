@@ -2,7 +2,6 @@ import http from 'http';
 import TelegramBot from 'node-telegram-bot-api';
 import { config } from '../config';
 import { logger } from '../utils/logger';
-import { database } from './database';
 
 export class WebhookServer {
   private server: http.Server | null = null;
@@ -57,28 +56,13 @@ export class WebhookServer {
             const reviewData = JSON.parse(body);
             logger.info(`Received review webhook: ${JSON.stringify(reviewData)}`);
 
-            // Создаём отзыв в БД
-            const review = database.createReview({
-              name: reviewData.name,
-              text: reviewData.text,
-              locale: reviewData.locale || 'ru',
-              avatar: reviewData.avatar,
-              photo: reviewData.photo,
-            });
-
-            if (!review) {
-              res.writeHead(500, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Failed to create review' }));
-              return;
-            }
-
             // Отправляем уведомление в Telegram
-            await this.sendReviewNotification(review);
+            await this.sendReviewNotification(reviewData);
 
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
               success: true,
-              reviewId: review.id
+              reviewId: reviewData.reviewId
             }));
           } catch (error) {
             logger.error('Error processing webhook', error as Error);
@@ -102,7 +86,7 @@ export class WebhookServer {
   /**
    * Отправляет уведомление о новом отзыве в Telegram
    */
-  private async sendReviewNotification(review: any): Promise<void> {
+  private async sendReviewNotification(reviewData: any): Promise<void> {
     try {
       const localeFlags: Record<string, string> = {
         ru: '🇷🇺',
@@ -119,14 +103,14 @@ export class WebhookServer {
       const text = [
         `<b>📝 New Review (Pending)</b>`,
         `────────────────`,
-        `<b>Date:</b> ${new Date(review.createdAt).toLocaleDateString('ru-RU')}`,
-        `<b>Language:</b> ${localeFlags[review.locale] || '🌐'} ${localeNames[review.locale] || review.locale.toUpperCase()}`,
-        `<b>Name:</b> ${review.name}`,
-        `<b>Text:</b>\n${review.text}`,
-        `<b>Avatar:</b> ${review.avatar ? '✅ yes' : '❌ no'}`,
-        `<b>Photo:</b> ${review.photo ? '✅ yes' : '❌ no'}`,
+        `<b>Date:</b> ${new Date().toLocaleDateString('ru-RU')}`,
+        `<b>Language:</b> ${localeFlags[reviewData.locale] || '🌐'} ${localeNames[reviewData.locale] || reviewData.locale.toUpperCase()}`,
+        `<b>Name:</b> ${reviewData.name}`,
+        `<b>Text:</b>\n${reviewData.text}`,
+        `<b>Avatar:</b> ${reviewData.avatar ? '✅ yes' : '❌ no'}`,
+        `<b>Photo:</b> ${reviewData.photo ? '✅ yes' : '❌ no'}`,
         `────────────────`,
-        `<b>Review ID:</b> ${review.id}`,
+        `<b>Review ID:</b> ${reviewData.reviewId}`,
       ].join('\n');
 
       const reply_markup = {
@@ -134,11 +118,11 @@ export class WebhookServer {
           [
             {
               text: '✅ Approve',
-              callback_data: `review_approve_${review.id}`
+              callback_data: `review_approve_${reviewData.reviewId}`
             },
             {
               text: '❌ Reject',
-              callback_data: `review_reject_${review.id}`
+              callback_data: `review_reject_${reviewData.reviewId}`
             }
           ]
         ]
@@ -149,7 +133,7 @@ export class WebhookServer {
         reply_markup,
       });
 
-      logger.success(`Review notification sent for #${review.id}`);
+      logger.success(`Review notification sent for #${reviewData.reviewId}`);
     } catch (error) {
       logger.error('Error sending review notification', error as Error);
     }
